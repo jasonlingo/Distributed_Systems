@@ -62,8 +62,8 @@ func doMap(
 	for i := range files {
 		filename := reduceName(jobName, mapTaskNumber, i)
 		f, err := os.Create(filename)
-		defer f.Close()
 		if err == nil {
+			defer f.Close()
 			files[i] = f
 			fileEncs[i] = json.NewEncoder(f)
 		} else {

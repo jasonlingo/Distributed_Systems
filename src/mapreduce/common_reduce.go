@@ -82,7 +82,6 @@ func getMapResultsByKey(jobName string, nMap, reduceTaskNumber int) map[string][
 
 				if _, ok := kvMap[kv.Key]; !ok {
 					kvMap[kv.Key] = make([]string, 0)
-
 				}
 				kvMap[kv.Key] = append(kvMap[kv.Key], kv.Value)
 			}
