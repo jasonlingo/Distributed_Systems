@@ -51,14 +51,14 @@ func doReduce(
 
 	kvMap := getMapResultsByKey(jobName, nMap, reduceTaskNumber)
 
-	outputFile, err := os.Create(mergeName(jobName, reduceTaskNumber))
+	file, err := os.Create(outFile)
 	if err != nil {
-		fmt.Printf("Failed to create output file: %s", outputFile)
+		fmt.Printf("Failed to create output file: %s", outFile)
 		panic(1)
 	}
-	defer outputFile.Close()
+	defer file.Close()
 
-	encoder := json.NewEncoder(outputFile)
+	encoder := json.NewEncoder(file)
 
 	for key, value := range kvMap {
 		encoder.Encode(KeyValue{key, reduceF(key, value)})
