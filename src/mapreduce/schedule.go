@@ -39,18 +39,18 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 	wg.Add(ntasks)
 
 	for i := 0; i < ntasks; i++ {
-		go func(curJobName string, curTaskNum, numOtherPhase int, curPhase jobPhase) {
+		go func(curTaskNum int) {
 			defer wg.Done()
 
 			for {
 				workerAddr := <- registerChan
 
 				var args DoTaskArgs
-				args.JobName = curJobName
+				args.JobName = jobName
 				args.File = mapFiles[curTaskNum]
 				args.TaskNumber = curTaskNum
-				args.NumOtherPhase = numOtherPhase
-				args.Phase = curPhase
+				args.NumOtherPhase = n_other
+				args.Phase = phase
 
 				ok := call(workerAddr, "Worker.DoTask", args, nil)
 
@@ -61,7 +61,7 @@ func schedule(jobName string, mapFiles []string, nReduce int, phase jobPhase, re
 					break
 				}
 			}
-		}(jobName, i, n_other, phase)
+		}(i)
 	}
 
 	wg.Wait()
