@@ -92,17 +92,10 @@ func (rf *Raft) getLastLogTermAndIndex() (int, int) {
 // return currentTerm and whether this server
 // believes it is the leader.
 func (rf *Raft) GetState() (int, bool) {
-	var term int
-	var isleader bool
-
 	// Your code here (2A).
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-
-	term = rf.currentTerm
-	isleader = rf.state == LEADER
-
-	return term, isleader
+	return rf.currentTerm, rf.state == LEADER
 }
 
 //
@@ -169,7 +162,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	defer rf.mu.Unlock()
 
 	if args.Term < rf.currentTerm {
-		DPrintf("Server %d reject server %d's request\n", rf.me, args.CandidateId)
+		DPrintf("Server %d rejected server %d's request\n", rf.me, args.CandidateId)
 		reply.VoteGranted = false
 		return
 	}
@@ -183,13 +176,13 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	logUpToDate := lastLogTerm < args.LastLogTerm || (lastLogTerm == args.LastLogTerm && lastLogIndex <= args.LastLogIndex)
 
 	if ( rf.votedFor == -1 || rf.votedFor == args.CandidateId) && logUpToDate { // log is up-to-date
-		DPrintf("Server %d votes for server %d\n", rf.me, args.CandidateId)
-		rf.heartbeatCh <- true
+		DPrintf("Server %d voted for server %d\n", rf.me, args.CandidateId)
 		rf.state = FOLLOWER
 		rf.currentTerm = args.Term
 		rf.votedFor = args.CandidateId
 		reply.VoteGranted = true
 		reply.Term = rf.currentTerm
+		rf.heartbeatCh <- true
 	}
 }
 
@@ -247,7 +240,7 @@ func (rf *Raft) broadcastRequestVote() {
 							curtRf.voteCount++
 							if curtRf.voteCount >= curtRf.majoritySize {
 								DPrintf("Server %d becomes the leader\n", curtRf.me)
-								curtRf.state = LEADER
+								curtRf.leaderCh <- true
 							}
 							curtRf.mu.Unlock()
 						}
@@ -282,17 +275,20 @@ type AppendEntryReply struct {
 }
 
 func (rf *Raft) AppendEntries(args *AppendEntryArg, reply *AppendEntryReply) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
 	if args.Entries == nil {// heartbeat
 		if args.Term >= rf.currentTerm {
-			rf.state = FOLLOWER
+			reply.Success = true
+			rf.heartbeatCh <- true
 		}
-		rf.heartbeatCh <- true
 	} else {
 
 	}
 }
 
-func (rf *Raft) sendHeartBeat(server int, args *AppendEntryArg, reply *AppendEntryReply) bool {
+func (rf *Raft) sendAppendEntries(server int, args *AppendEntryArg, reply *AppendEntryReply) bool {
 	return rf.peers[server].Call("Raft.AppendEntries", args, reply)
 }
 
@@ -303,7 +299,12 @@ func (rf *Raft) broadcastHeartbeats() {
 	for i := range rf.peers {
 		if i != rf.me {
 			DPrintf("Server %d sends a heartbeat to server %d\n", rf.me, i)
-			go rf.AppendEntries(&args, &AppendEntryReply{})
+			go func(curtRf *Raft, peer int) {
+				ok := curtRf.sendAppendEntries(peer, &args, &AppendEntryReply{})
+				if !ok {
+					DPrintf("Server %d failed to send hb to server %d\n", curtRf.me, peer)
+				}
+			}(rf, i)
 		}
 	}
 }
@@ -360,8 +361,8 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 	// Your initialization code here (2A, 2B, 2C).
 	rf.currentTerm = 0
 	rf.state = FOLLOWER
-	rf.applyCh = applyCh
 	rf.majoritySize = len(peers) / 2 + 1
+	rf.applyCh = applyCh
 	rf.heartbeatCh = make(chan bool, 100)
 	rf.leaderCh = make(chan bool, 100)
 
@@ -390,6 +391,8 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 				curtRf.mu.Unlock()
 				go curtRf.broadcastRequestVote()
 				select {
+				case <- curtRf.leaderCh:
+					curtRf.state = LEADER
 				case <- curtRf.heartbeatCh:
 					curtRf.state = FOLLOWER
 				case <- time.After(time.Duration(rand.Float32() * 150 + 150) * time.Millisecond):
