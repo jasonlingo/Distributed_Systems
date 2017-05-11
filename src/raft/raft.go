@@ -300,6 +300,7 @@ func (rf *Raft) broadcastHeartbeats() {
 	args := AppendEntryArg{}
 	args.Term = rf.currentTerm
 	args.LeaderId = rf.me
+	rf.voteCount = 0
 
 	for i := range rf.peers {
 		if i != rf.me {
@@ -309,6 +310,12 @@ func (rf *Raft) broadcastHeartbeats() {
 				ok := crf.sendAppendEntries(peer, &args, &reply)
 				if !ok {
 					DPrintf("Server %d failed to send hb to server %d\n", crf.me, peer)
+					rf.mu.Lock()
+					rf.voteCount++
+					if rf.voteCount >= rf.majoritySize {
+						rf.state = FOLLOWER
+					}
+					rf.mu.Unlock()
 				}
 			}(rf, i)
 		}
