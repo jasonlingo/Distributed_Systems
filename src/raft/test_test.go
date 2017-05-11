@@ -30,6 +30,7 @@ func TestInitialElection2A(t *testing.T) {
 	cfg.checkOneLeader()
 
 	// does the leader+term stay the same if there is no network failure?
+	fmt.Printf("Checking term...\n")
 	term1 := cfg.checkTerms()
 	time.Sleep(2 * RaftElectionTimeout)
 	term2 := cfg.checkTerms()
