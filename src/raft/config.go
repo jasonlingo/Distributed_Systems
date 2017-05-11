@@ -206,8 +206,7 @@ func (cfg *config) cleanup() {
 
 // attach server i to the net.
 func (cfg *config) connect(i int) {
-	// fmt.Printf("connect(%d)\n", i)
-
+	DPrintf("Connect server %d ------\n", i)
 	cfg.connected[i] = true
 
 	// outgoing ClientEnds
@@ -229,8 +228,7 @@ func (cfg *config) connect(i int) {
 
 // detach server i from the net.
 func (cfg *config) disconnect(i int) {
-	// fmt.Printf("disconnect(%d)\n", i)
-
+	DPrintf("Disconnect server %d ------\n", i)
 	cfg.connected[i] = false
 
 	// outgoing ClientEnds

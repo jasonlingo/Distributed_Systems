@@ -230,7 +230,7 @@ func (rf *Raft) broadcastRequestVote() {
 	for i := range rf.peers {
 		if i != rf.me {
 			go func(peer int, curtRf *Raft) {
-				for {
+				for curtRf.state == CANDIDATE {
 					reply := RequestVoteReply{}
 					DPrintf("Server %d sends vote request to %d\n", curtRf.me, peer)
 					ok := curtRf.sendRequestVote(peer, &args, &reply)
@@ -239,7 +239,7 @@ func (rf *Raft) broadcastRequestVote() {
 							curtRf.mu.Lock()
 							curtRf.voteCount++
 							if curtRf.voteCount >= curtRf.majoritySize {
-								DPrintf("Server %d becomes the leader\n", curtRf.me)
+								DPrintf("Server %d becomes the leader --------- \n", curtRf.me)
 								curtRf.leaderCh <- true
 							}
 							curtRf.mu.Unlock()
@@ -281,7 +281,11 @@ func (rf *Raft) AppendEntries(args *AppendEntryArg, reply *AppendEntryReply) {
 	if args.Entries == nil {// heartbeat
 		if args.Term >= rf.currentTerm {
 			reply.Success = true
+			rf.state = FOLLOWER
 			rf.heartbeatCh <- true
+		} else {
+			DPrintf("Server %d rejected heartbeat from server %d\n", rf.me, args.LeaderId)
+			reply.Success = false
 		}
 	} else {
 
@@ -295,14 +299,16 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntryArg, reply *Appen
 func (rf *Raft) broadcastHeartbeats() {
 	args := AppendEntryArg{}
 	args.Term = rf.currentTerm
+	args.LeaderId = rf.me
 
 	for i := range rf.peers {
 		if i != rf.me {
 			DPrintf("Server %d sends a heartbeat to server %d\n", rf.me, i)
-			go func(curtRf *Raft, peer int) {
-				ok := curtRf.sendAppendEntries(peer, &args, &AppendEntryReply{})
+			go func(crf *Raft, peer int) {
+				reply := AppendEntryReply{}
+				ok := crf.sendAppendEntries(peer, &args, &reply)
 				if !ok {
-					DPrintf("Server %d failed to send hb to server %d\n", curtRf.me, peer)
+					DPrintf("Server %d failed to send hb to server %d\n", crf.me, peer)
 				}
 			}(rf, i)
 		}
@@ -375,15 +381,14 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 		for {
 			switch curtRf.state {
 			case FOLLOWER:
-				DPrintf("Server %d forloop with state %s\n", curtRf.me, "FOLLOWER")
 				select {
 				case <- curtRf.heartbeatCh:
+					curtRf.state = FOLLOWER
 					DPrintf("Server %d receives a heartbeat\n", curtRf.me)
 				case <- time.After(time.Duration(rand.Float32() * 150 + 150) * time.Millisecond):
 					curtRf.state = CANDIDATE
 				}
 			case CANDIDATE:
-				DPrintf("Server %d became a candidate ---------\n", curtRf.me)
 				curtRf.mu.Lock()
 				curtRf.currentTerm++
 				curtRf.votedFor = curtRf.me
@@ -398,7 +403,6 @@ func Make(peers []*labrpc.ClientEnd, me int, persister *Persister, applyCh chan 
 				case <- time.After(time.Duration(rand.Float32() * 150 + 150) * time.Millisecond):
 				}
 			case LEADER:
-				DPrintf("Server %d forloop with state %s\n", curtRf.me, "LEADER")
 				curtRf.broadcastHeartbeats()
 				time.Sleep(HEART_BEAT_INTERVAL)
 			}
